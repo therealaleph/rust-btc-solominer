@@ -2,7 +2,7 @@
 
 A high-performance Bitcoin solo mining client written in Rust, designed for maximum hashing efficiency with minimal overhead.
 
-**Credits**: x.com/hey_itsmyturn | t.me/itsthealephyouknowfromtwitter
+**By**: [Shin on X](https://x.com/hey_itsmyturn) | [Shin on Telegram](https://t.me/itsthealephyouknowfromtwitter)
 
 ## Overview
 
