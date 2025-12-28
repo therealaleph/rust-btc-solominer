@@ -376,6 +376,23 @@ validate_btc_address() {
     fi
 }
 
+# Detect if sudo is needed for Docker commands
+detect_docker_sudo() {
+    local docker_prefix=""
+    
+    # Check if Docker works without sudo
+    if docker version &> /dev/null 2>&1; then
+        docker_prefix=""
+    elif sudo docker version &> /dev/null 2>&1; then
+        docker_prefix="sudo "
+        info "Docker requires sudo privileges. Using sudo for Docker commands."
+    else
+        error_exit "Docker is not accessible. Please ensure Docker is installed and your user has permission to run Docker commands."
+    fi
+    
+    echo "$docker_prefix"
+}
+
 # Local deployment function
 deploy_local() {
     echo "=========================================="
@@ -388,7 +405,20 @@ deploy_local() {
         error_exit "Docker is not installed. Please install Docker first."
     fi
     
-    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    # Detect if sudo is needed for Docker
+    DOCKER_SUDO=$(detect_docker_sudo)
+    
+    # Check for Docker Compose
+    local compose_available=false
+    if command -v docker-compose &> /dev/null; then
+        DOCKER_COMPOSE_CMD="${DOCKER_SUDO}docker-compose"
+        compose_available=true
+    elif ${DOCKER_SUDO}docker compose version &> /dev/null 2>&1; then
+        DOCKER_COMPOSE_CMD="${DOCKER_SUDO}docker compose"
+        compose_available=true
+    fi
+    
+    if [ "$compose_available" = false ]; then
         error_exit "Docker Compose is not installed. Please install Docker Compose first."
     fi
     
@@ -460,12 +490,6 @@ deploy_local() {
     # Build and start container
     info "Building and starting Docker container (this may take several minutes)..."
     
-    if docker compose version &> /dev/null; then
-        DOCKER_COMPOSE_CMD="docker compose"
-    else
-        DOCKER_COMPOSE_CMD="docker-compose"
-    fi
-    
     $DOCKER_COMPOSE_CMD down 2>/dev/null || true
     $DOCKER_COMPOSE_CMD up --build -d
     
@@ -477,7 +501,7 @@ deploy_local() {
     sleep 5
     
     # Check if container is running
-    if ! $DOCKER_COMPOSE_CMD ps | grep -q "Up"; then
+    if ! $DOCKER_COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
         error_exit "Container failed to start"
     fi
     
