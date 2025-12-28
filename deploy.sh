@@ -429,16 +429,15 @@ deploy_local() {
     fi
     
     # Setup repository - check if we're in the repository directory
-    local repo_dir=""
+    local original_dir=$(pwd)
     if [ -f "Dockerfile" ] && [ -f "Cargo.toml" ] && [ -f "src/main.rs" ]; then
-        repo_dir="."
         info "Using existing repository in current directory"
     else
         # Clone repository to a temporary directory
         info "Repository not found in current directory. Cloning repository..."
         
         local temp_dir=$(mktemp -d)
-        repo_dir="$temp_dir/rust-btc-solominer"
+        local repo_dir="$temp_dir/rust-btc-solominer"
         
         if ! git clone https://github.com/therealaleph/rust-btc-solominer.git "$repo_dir" 2>/dev/null; then
             rm -rf "$temp_dir"
@@ -450,10 +449,13 @@ deploy_local() {
         echo "Repository cloned to: $repo_dir"
         echo "You can delete this directory after deployment if desired."
         echo ""
+        
+        # Change to repository directory
+        cd "$repo_dir" || error_exit "Failed to change to repository directory"
     fi
     
-    # Change to repository directory
-    cd "$repo_dir" || error_exit "Failed to change to repository directory"
+    # Store current directory for later use
+    local deploy_dir=$(pwd)
     
     # Get user credentials
     echo "Enter your configuration details:"
@@ -555,13 +557,13 @@ deploy_local() {
     echo ""
     echo "Your Bitcoin solo miner is now running locally"
     echo ""
-    if [ "$repo_dir" != "." ]; then
-        echo "Repository location: $repo_dir"
+    if [ "$deploy_dir" != "$original_dir" ]; then
+        echo "Repository location: $deploy_dir"
         echo ""
     fi
-    echo "To view logs: cd $repo_dir && $DOCKER_COMPOSE_CMD logs -f"
-    echo "To stop miner: cd $repo_dir && $DOCKER_COMPOSE_CMD down"
-    echo "To restart: cd $repo_dir && $DOCKER_COMPOSE_CMD restart"
+    echo "To view logs: cd $deploy_dir && $DOCKER_COMPOSE_CMD logs -f"
+    echo "To stop miner: cd $deploy_dir && $DOCKER_COMPOSE_CMD down"
+    echo "To restart: cd $deploy_dir && $DOCKER_COMPOSE_CMD restart"
     echo ""
 }
 
