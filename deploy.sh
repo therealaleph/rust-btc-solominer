@@ -376,18 +376,24 @@ validate_btc_address() {
     fi
 }
 
-# Detect if sudo is needed for Docker commands
+# Detect if sudo is needed for Docker commands and check if daemon is running
 detect_docker_sudo() {
     local docker_prefix=""
     
-    # Check if Docker works without sudo
-    if docker version &> /dev/null 2>&1; then
+    # Check if Docker daemon is running (try without sudo first)
+    if docker info &> /dev/null 2>&1; then
         docker_prefix=""
-    elif sudo docker version &> /dev/null 2>&1; then
+    elif sudo docker info &> /dev/null 2>&1; then
         docker_prefix="sudo "
         info "Docker requires sudo privileges. Using sudo for Docker commands."
     else
-        error_exit "Docker is not accessible. Please ensure Docker is installed and your user has permission to run Docker commands."
+        # Check if Docker is installed
+        if ! command -v docker &> /dev/null; then
+            error_exit "Docker is not installed. Please install Docker first."
+        fi
+        
+        # Docker is installed but daemon is not running
+        error_exit "Docker daemon is not running. Please start Docker Desktop or the Docker service:\n  - macOS: Start Docker Desktop application\n  - Linux: Run 'sudo systemctl start docker' or 'sudo service docker start'"
     fi
     
     echo "$docker_prefix"
