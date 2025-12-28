@@ -6,31 +6,55 @@ A high-performance Bitcoin solo mining client written in Rust, designed for maxi
 
 ## Overview
 
-This Rust implementation of a Bitcoin solo miner prioritizes raw performance while maintaining essential functionality. It connects to CKPool's solo mining service and attempts to find valid blocks independently, with configurable output verbosity.
+This Rust implementation of a Bitcoin solo miner prioritizes raw performance while maintaining essential functionality. It connects to CKPool's solo mining service and attempts to find valid blocks independently, with configurable output verbosity and comprehensive error handling.
 
 ## Key Features
 
 - **High-Performance Mining**: Optimized Rust implementation for maximum hash rate
 - **Solo Mining**: Direct connection to CKPool for independent block discovery
 - **Quiet Mode**: Optional silent operation (only shows wins)
-- **Configuration File**: INI-based config for wallet address and settings
+- **Configuration Options**: Support for both config file and environment variables
 - **Real-time Monitoring**: Live hash rate and progress tracking
 - **Automatic Restart**: Seamless operation across network changes
+- **Telegram Integration**: Optional notifications for startup and block discovery
+- **Docker Support**: Full Docker Compose integration with automatic restart
+- **Log Persistence**: Block discovery logs saved to file for permanent records
 
-## Performance Optimizations
+## Recent Updates
 
-- **No UI Overhead**: Removed all ASCII art and fancy displays
-- **Minimal Logging**: Reduced output frequency for maximum CPU utilization
-- **Efficient Hashing**: Optimized SHA256 double-hashing implementation
-- **Fast Restarts**: Minimal delays between mining sessions
+### Critical Bug Fixes
+- Fixed block header format creation (removed invalid hardcoded padding)
+- Fixed target calculation from nbits using proper Bitcoin compact format algorithm
+- Fixed target comparison to use integer comparison instead of string comparison
+- Fixed extranonce2 formatting for proper 8 hex character output
+
+### Code Quality Improvements
+- Replaced all unwrap() calls with proper error handling using anyhow
+- Fixed race conditions in block height monitoring
+- Improved hash rate calculation precision
+- Added proper error handling for hex decoding operations
+- Extracted magic numbers to named constants
+- Optimized mutex lock granularity
+- Added Bitcoin address format validation
+- Added comprehensive documentation comments
+
+### New Features
+- Telegram integration for startup and block found notifications
+- Environment variable support (BTC_ADDRESS, QUIET_MODE, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID)
+- Docker Compose support with restart policy and log persistence
+- Block discovery logging to file for persistence
+- Non-interactive mode support for Docker/CI environments
 
 ## Prerequisites
 
 - Rust 1.70+ installed
 - OpenSSL development libraries
 - Internet connection for pool connectivity
+- Docker and Docker Compose (optional, for containerized deployment)
 
 ## Installation
+
+### Standard Installation
 
 1. **Install Rust** (if not already installed):
    ```bash
@@ -45,6 +69,9 @@ This Rust implementation of a Bitcoin solo miner prioritizes raw performance whi
    
    # Ubuntu/Debian
    sudo apt-get install libssl-dev pkg-config
+   
+   # macOS
+   brew install openssl pkg-config
    ```
 
 3. **Build the miner**:
@@ -52,35 +79,82 @@ This Rust implementation of a Bitcoin solo miner prioritizes raw performance whi
    cargo build --release
    ```
 
+### Docker Installation
+
+1. **Set environment variables**:
+   ```bash
+   export BTC_ADDRESS=your_bitcoin_address
+   export TELEGRAM_BOT_TOKEN=your_bot_token  # Optional
+   export TELEGRAM_USER_ID=your_user_id      # Optional
+   ```
+
+2. **Build and start**:
+   ```bash
+   docker-compose up --build -d
+   ```
+
+3. **View logs**:
+   ```bash
+   docker-compose logs -f
+   ```
+
 ## Configuration
 
-### Option 1: Interactive Setup
-Run the miner and answer prompts for:
-- Bitcoin wallet address
-- Quiet mode preference
+### Option 1: Configuration File
 
-### Option 2: Configuration File
 Create a `config.ini` file in the same directory:
 
 ```ini
 [miner]
-wallet_address = 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+wallet_address = your_bitcoin_address_here
 quiet_mode = 0
+
+[telegram]
+bot_token = your_bot_token_here
+user_id = your_user_id_here
 ```
+
+### Option 2: Environment Variables
+
+Environment variables take precedence over config file:
+
+```bash
+export BTC_ADDRESS=your_bitcoin_address
+export QUIET_MODE=0
+export TELEGRAM_BOT_TOKEN=your_bot_token
+export TELEGRAM_USER_ID=your_user_id
+export RUST_LOG=info
+```
+
+### Option 3: Interactive Setup
+
+Run the miner and answer prompts for:
+- Bitcoin wallet address
+- Quiet mode preference
 
 ## Usage Instructions
 
-### Basic Usage
+### Standard Usage
+
 ```bash
 ./target/release/bitcoin-solo-miner
 ```
 
-### With Pre-configured Address
+### Docker Usage
+
 ```bash
-echo "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" | ./target/release/bitcoin-solo-miner
+# Start miner
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop miner
+docker-compose down
 ```
 
 ### Quiet Mode
+
 - **Enabled**: Only shows output when blocks are found
 - **Disabled**: Shows all mining progress and hash rates
 
@@ -89,7 +163,7 @@ echo "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" | ./target/release/bitcoin-solo-miner
 1. **Connection**: Establishes connection to CKPool's solo mining service
 2. **Authentication**: Authenticates with your Bitcoin address
 3. **Job Retrieval**: Receives mining jobs with block parameters
-4. **Hash Generation**: Generates SHA256 double-hashes with random nonces
+4. **Hash Generation**: Generates SHA256 double-hashes with sequential nonces
 5. **Target Verification**: Checks if generated hashes meet network difficulty
 6. **Solution Submission**: Submits valid solutions to the pool
 
@@ -100,6 +174,33 @@ echo "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" | ./target/release/bitcoin-solo-miner
 - **Stratum Protocol**: Implements mining pool communication
 - **SHA256 Algorithm**: Bitcoin's proof-of-work hashing
 - **Error Handling**: Robust error management with anyhow
+- **Block Header Format**: Properly formatted 80-byte Bitcoin block headers
+- **Target Calculation**: Correct nbits to target conversion using compact format
+
+## Docker Compose Features
+
+- Automatic restart on failure (`restart: always`)
+- Full logging to stdout and file
+- Environment variable configuration
+- Log persistence on host machine (`./logs/`)
+- Block discovery logs saved to `./logs/blocks_found.log`
+- Detached mode support
+
+## Telegram Integration
+
+To enable Telegram notifications:
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) on Telegram
+2. Get your user ID from [@userinfobot](https://t.me/userinfobot)
+3. Add both to config.ini or set as environment variables:
+   ```bash
+   export TELEGRAM_BOT_TOKEN=your_bot_token
+   export TELEGRAM_USER_ID=your_user_id
+   ```
+
+Notifications are sent for:
+- Miner startup
+- Block discovery
 
 ## Expected Performance
 
@@ -119,6 +220,7 @@ echo "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa" | ./target/release/bitcoin-solo-miner
 - **log/env_logger**: Logging system
 - **anyhow**: Error handling
 - **configparser**: INI file parsing
+- **atty**: Terminal detection for non-interactive mode
 
 ## Debug Information
 
@@ -127,6 +229,16 @@ Enable detailed logging:
 RUST_LOG=debug ./target/release/bitcoin-solo-miner
 ```
 
+Or with Docker:
+```bash
+RUST_LOG=debug docker-compose up
+```
+
+## Log Files
+
+When running in Docker or with proper permissions, block discoveries are logged to:
+- `./logs/blocks_found.log` - Persistent log of all block discoveries with timestamps
+
 ## Important Notes
 
 - **Solo Mining Risk**: Very low probability of finding blocks
@@ -134,11 +246,16 @@ RUST_LOG=debug ./target/release/bitcoin-solo-miner
 - **Pool Reliability**: Depends on CKPool service availability
 - **Legal Compliance**: Ensure mining complies with local regulations
 - **Resource Usage**: Mining is CPU-intensive
+- **Block Discovery**: Extremely rare - requires astronomical luck for solo mining
 
-## Support
+## Troubleshooting
 
-For issues or questions:
-- Check the configuration file format
-- Verify network connectivity
-- Ensure proper OpenSSL installation
-- Review error logs for specific issues
+- **Connection Issues**: Verify network connectivity and pool availability
+- **Build Errors**: Ensure OpenSSL development libraries are installed
+- **Permission Errors**: Check file permissions for log directory
+- **Address Validation**: Ensure Bitcoin address format is correct
+- **Docker Issues**: Verify Docker daemon is running and environment variables are set
+
+## License
+
+See LICENSE file for details.
