@@ -376,10 +376,138 @@ validate_btc_address() {
     fi
 }
 
-# Main deployment function
-main() {
+# Local deployment function
+deploy_local() {
     echo "=========================================="
-    echo "Bitcoin Solo Miner - Deployment Script"
+    echo "Bitcoin Solo Miner - Local Deployment"
+    echo "=========================================="
+    echo ""
+    
+    # Check if Docker is installed
+    if ! command -v docker &> /dev/null; then
+        error_exit "Docker is not installed. Please install Docker first."
+    fi
+    
+    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+        error_exit "Docker Compose is not installed. Please install Docker Compose first."
+    fi
+    
+    # Get user credentials
+    echo "Enter your configuration details:"
+    
+    read -p "Bitcoin address (required): " BTC_ADDRESS
+    validate_input "$BTC_ADDRESS" "Bitcoin address"
+    validate_btc_address "$BTC_ADDRESS"
+    
+    read -p "Telegram bot token (optional, press Enter to skip): " TG_TOKEN
+    TG_USER_ID=""
+    
+    # Only ask for user ID if token was provided
+    if [ -n "$TG_TOKEN" ]; then
+        read -p "Telegram user ID (required if token provided): " TG_USER_ID
+        
+        if [ -n "$TG_USER_ID" ]; then
+            # Validate Telegram user ID is numeric
+            if ! [[ "$TG_USER_ID" =~ ^[0-9]+$ ]]; then
+                error_exit "Telegram user ID must be numeric"
+            fi
+        else
+            warning "Telegram token provided but user ID is empty. Telegram notifications will be disabled."
+            TG_TOKEN=""
+        fi
+    fi
+    
+    # Create docker-compose.yml
+    info "Creating docker-compose.yml configuration..."
+    
+    local compose_content
+    compose_content="services:
+  bitcoin-miner:
+    build: .
+    container_name: bitcoin-solo-miner
+    restart: always
+    environment:
+      - BTC_ADDRESS=$BTC_ADDRESS
+      - QUIET_MODE=0
+      - RUST_LOG=info
+      - DOCKER_CONTAINER=1"
+    
+    # Add Telegram credentials only if both are provided
+    if [ -n "$TG_TOKEN" ] && [ -n "$TG_USER_ID" ]; then
+        compose_content="${compose_content}
+      - TELEGRAM_BOT_TOKEN=$TG_TOKEN
+      - TELEGRAM_USER_ID=$TG_USER_ID"
+    fi
+    
+    compose_content="${compose_content}
+    volumes:
+      - ./logs:/app/logs
+    stdin_open: false
+    tty: false
+    logging:
+      driver: \"json-file\"
+      options:
+        max-size: \"10m\"
+        max-file: \"3\"
+        labels: \"bitcoin-miner\""
+    
+    echo "$compose_content" > docker-compose.yml
+    success "Configuration file created"
+    
+    # Create logs directory
+    mkdir -p logs
+    
+    # Build and start container
+    info "Building and starting Docker container (this may take several minutes)..."
+    
+    if docker compose version &> /dev/null; then
+        DOCKER_COMPOSE_CMD="docker compose"
+    else
+        DOCKER_COMPOSE_CMD="docker-compose"
+    fi
+    
+    $DOCKER_COMPOSE_CMD down 2>/dev/null || true
+    $DOCKER_COMPOSE_CMD up --build -d
+    
+    if [ $? -ne 0 ]; then
+        error_exit "Failed to deploy container. Check logs for details."
+    fi
+    
+    # Wait a moment for container to start
+    sleep 5
+    
+    # Check if container is running
+    if ! $DOCKER_COMPOSE_CMD ps | grep -q "Up"; then
+        error_exit "Container failed to start"
+    fi
+    
+    success "Container deployed and running"
+    
+    echo ""
+    echo "=== Container Status ==="
+    $DOCKER_COMPOSE_CMD ps
+    
+    echo ""
+    echo "=== Recent Logs (last 20 lines) ==="
+    $DOCKER_COMPOSE_CMD logs --tail=20
+    
+    echo ""
+    echo "=========================================="
+    success "Local deployment completed successfully!"
+    echo "=========================================="
+    echo ""
+    echo "Your Bitcoin solo miner is now running locally"
+    echo ""
+    echo "To view logs: $DOCKER_COMPOSE_CMD logs -f"
+    echo "To stop miner: $DOCKER_COMPOSE_CMD down"
+    echo "To restart: $DOCKER_COMPOSE_CMD restart"
+    echo ""
+}
+
+# Remote deployment function
+deploy_remote() {
+    echo "=========================================="
+    echo "Bitcoin Solo Miner - Remote Deployment"
     echo "=========================================="
     echo ""
     
@@ -464,6 +592,29 @@ main() {
     echo "To stop miner: ssh $SSH_USER@$SERVER_IP 'cd /root/bitcoin-miner && docker-compose down'"
     echo "To restart: ssh $SSH_USER@$SERVER_IP 'cd /root/bitcoin-miner && docker-compose restart'"
     echo ""
+}
+
+# Main deployment function
+main() {
+    echo "=========================================="
+    echo "Bitcoin Solo Miner - Deployment Script"
+    echo "=========================================="
+    echo ""
+    
+    read -p "Deploy to (local/remote) [default: remote]: " DEPLOY_TYPE
+    DEPLOY_TYPE=${DEPLOY_TYPE:-remote}
+    
+    case "$DEPLOY_TYPE" in
+        local|Local|LOCAL)
+            deploy_local
+            ;;
+        remote|Remote|REMOTE)
+            deploy_remote
+            ;;
+        *)
+            error_exit "Invalid deployment type. Choose 'local' or 'remote'"
+            ;;
+    esac
 }
 
 # Run main function

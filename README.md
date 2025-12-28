@@ -132,19 +132,59 @@ Run the miner and answer prompts for:
 - Bitcoin wallet address
 - Quiet mode preference
 
+## Quick Start - One-Liner Deployment
+
+### Remote Server Deployment
+
+Deploy to a remote server (Ubuntu/Debian) with automatic setup:
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/therealaleph/rust-btc-solominer/main/deploy.sh)
+```
+
+This will:
+- Prompt for server connection details (IP, SSH username, authentication method)
+- Prompt for Bitcoin address and optional Telegram credentials
+- Automatically install Docker and dependencies on the remote server
+- Deploy and start the miner container
+- Display status and logs
+
+### Local Deployment
+
+Deploy locally on your machine (requires Docker installed):
+
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/therealaleph/rust-btc-solominer/main/deploy.sh)
+```
+
+When prompted, select "local" deployment type.
+
+Or clone and deploy manually:
+
+```bash
+git clone https://github.com/therealaleph/rust-btc-solominer.git
+cd rust-btc-solominer
+bash deploy.sh
+```
+
 ## Usage Instructions
 
-### Standard Usage
+### Standard Usage (Built Binary)
 
 ```bash
 ./target/release/bitcoin-solo-miner
 ```
 
-### Docker Usage
+### Docker Usage (Manual)
 
 ```bash
+# Set environment variables
+export BTC_ADDRESS=your_bitcoin_address
+export TELEGRAM_BOT_TOKEN=your_bot_token  # Optional
+export TELEGRAM_USER_ID=your_user_id      # Optional
+
 # Start miner
-docker-compose up -d
+docker-compose up --build -d
 
 # View logs
 docker-compose logs -f
