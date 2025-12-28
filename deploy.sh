@@ -210,69 +210,65 @@ create_docker_compose() {
     
     info "Creating docker-compose.yml configuration..."
     
-    if [ -n "$SSH_PASSWORD" ]; then
-        sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" bash << ENDSSH
-set -e
-
-cat > /root/bitcoin-miner/docker-compose.yml << EOF
-services:
+    # Escape variables for heredoc
+    local escaped_btc_address=$(printf '%s\n' "$btc_address" | sed "s/'/'\\\\''/g")
+    local escaped_tg_token=$(printf '%s\n' "$tg_token" | sed "s/'/'\\\\''/g")
+    local escaped_tg_user_id=$(printf '%s\n' "$tg_user_id" | sed "s/'/'\\\\''/g")
+    
+    local compose_content
+    compose_content="services:
   bitcoin-miner:
     build: .
     container_name: bitcoin-solo-miner
     restart: always
     environment:
-      - BTC_ADDRESS=$btc_address
+      - BTC_ADDRESS=${escaped_btc_address}
       - QUIET_MODE=0
-      - TELEGRAM_BOT_TOKEN=$tg_token
-      - TELEGRAM_USER_ID=$tg_user_id
       - RUST_LOG=info
-      - DOCKER_CONTAINER=1
-    volumes:
-      - ./logs:/app/logs
-    stdin_open: false
-    tty: false
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        labels: "bitcoin-miner"
-EOF
-
-echo "SUCCESS: Configuration file created"
-ENDSSH
-    else
-        ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" bash << ENDSSH
-set -e
-
-cat > /root/bitcoin-miner/docker-compose.yml << EOF
-services:
-  bitcoin-miner:
-    build: .
-    container_name: bitcoin-solo-miner
-    restart: always
-    environment:
-      - BTC_ADDRESS=$btc_address
-      - QUIET_MODE=0
-      - TELEGRAM_BOT_TOKEN=$tg_token
-      - TELEGRAM_USER_ID=$tg_user_id
-      - RUST_LOG=info
-      - DOCKER_CONTAINER=1
-    volumes:
-      - ./logs:/app/logs
-    stdin_open: false
-    tty: false
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        labels: "bitcoin-miner"
-EOF
-
-echo "SUCCESS: Configuration file created"
-ENDSSH
+      - DOCKER_CONTAINER=1"
+    
+    # Add Telegram credentials only if both are provided
+    if [ -n "$tg_token" ] && [ -n "$tg_user_id" ]; then
+        compose_content="${compose_content}
+      - TELEGRAM_BOT_TOKEN=${escaped_tg_token}
+      - TELEGRAM_USER_ID=${escaped_tg_user_id}"
     fi
+    
+    compose_content="${compose_content}
+    volumes:
+      - ./logs:/app/logs
+    stdin_open: false
+    tty: false
+    logging:
+      driver: \"json-file\"
+      options:
+        max-size: \"10m\"
+        max-file: \"3\"
+        labels: \"bitcoin-miner\""
+    
+    if [ -n "$SSH_PASSWORD" ]; then
+        sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" "cat > /root/bitcoin-miner/docker-compose.yml" <<< "$compose_content"
+    else
+        ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" "cat > /root/bitcoin-miner/docker-compose.yml" <<< "$compose_content"
+    fi
+    
+    if [ $? -ne 0 ]; then
+        error_exit "Failed to create configuration file"
+    fi
+    
+    # Verify file was created
+    if [ -n "$SSH_PASSWORD" ]; then
+        if ! sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" "test -f /root/bitcoin-miner/docker-compose.yml"; then
+            error_exit "Configuration file was not created"
+        fi
+    else
+        if ! ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" "test -f /root/bitcoin-miner/docker-compose.yml"; then
+            error_exit "Configuration file was not created"
+        fi
+    fi
+    
+    success "Configuration file created"
+}
 
     if [ $? -ne 0 ]; then
         error_exit "Failed to create configuration file"
@@ -426,15 +422,22 @@ main() {
     validate_input "$BTC_ADDRESS" "Bitcoin address"
     validate_btc_address "$BTC_ADDRESS"
     
-    read -p "Telegram bot token (required): " TG_TOKEN
-    validate_input "$TG_TOKEN" "Telegram bot token"
+    read -p "Telegram bot token (optional, press Enter to skip): " TG_TOKEN
+    TG_USER_ID=""
     
-    read -p "Telegram user ID (required): " TG_USER_ID
-    validate_input "$TG_USER_ID" "Telegram user ID"
-    
-    # Validate Telegram user ID is numeric
-    if ! [[ "$TG_USER_ID" =~ ^[0-9]+$ ]]; then
-        error_exit "Telegram user ID must be numeric"
+    # Only ask for user ID if token was provided
+    if [ -n "$TG_TOKEN" ]; then
+        read -p "Telegram user ID (required if token provided): " TG_USER_ID
+        
+        if [ -n "$TG_USER_ID" ]; then
+            # Validate Telegram user ID is numeric
+            if ! [[ "$TG_USER_ID" =~ ^[0-9]+$ ]]; then
+                error_exit "Telegram user ID must be numeric"
+            fi
+        else
+            warning "Telegram token provided but user ID is empty. Telegram notifications will be disabled."
+            TG_TOKEN=""
+        fi
     fi
     
     echo ""
