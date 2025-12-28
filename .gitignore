@@ -1,24 +1,37 @@
-# Rust build artifacts
-/target/
-**/*.rs.bk
+# Rust
+target/
 Cargo.lock
+**/*.rs.bk
+*.pdb
 
-# IDE files
+# Logs
+*.log
+logs/
+*.log.*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Docker
+.dockerignore
 
-# Keep only source and Windows package
-!windows-package/
-!src/
-!Cargo.toml
-!README.md
-!config.ini
+# Build artifacts
+*.exe
+!windows/*.exe
+
+# Temporary files
+*.tmp
+*.bak

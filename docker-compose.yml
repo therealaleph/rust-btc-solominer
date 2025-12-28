@@ -1,0 +1,23 @@
+services:
+  bitcoin-miner:
+    build: .
+    container_name: bitcoin-solo-miner
+    restart: always
+    environment:
+      - BTC_ADDRESS=${BTC_ADDRESS}
+      - QUIET_MODE=${QUIET_MODE:-0}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_USER_ID=${TELEGRAM_USER_ID:-}
+      - RUST_LOG=${RUST_LOG:-info}
+      - DOCKER_CONTAINER=1
+    volumes:
+      - ./logs:/app/logs
+    stdin_open: false
+    tty: false
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "bitcoin-miner"
+
