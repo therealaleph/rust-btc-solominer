@@ -42,6 +42,10 @@ check_dependencies() {
     fi
 }
 
+# Global variables for SSH commands
+SSH_CMD=""
+SSH_PASSWORD=""
+
 # Test SSH connection
 test_connection() {
     local server_ip=$1
@@ -59,14 +63,14 @@ test_connection() {
         if ! sshpass -p "$ssh_password" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$ssh_user@$server_ip" "echo 'Connection successful'" 2>/dev/null; then
             error_exit "Failed to connect to server. Please check credentials and network connectivity."
         fi
+        SSH_PASSWORD="$ssh_password"
         SSH_CMD="sshpass -p '$ssh_password' ssh -o StrictHostKeyChecking=no"
-        SCP_CMD="sshpass -p '$ssh_password' scp -o StrictHostKeyChecking=no"
     else
         if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$ssh_user@$server_ip" "echo 'Connection successful'" 2>/dev/null; then
             error_exit "Failed to connect to server. Please check SSH key configuration."
         fi
+        SSH_PASSWORD=""
         SSH_CMD="ssh -o StrictHostKeyChecking=no"
-        SCP_CMD="scp -o StrictHostKeyChecking=no"
     fi
     
     success "SSH connection successful"
@@ -79,7 +83,8 @@ install_dependencies() {
     
     info "Installing dependencies on remote server (this may take a few minutes)..."
     
-    $SSH_CMD "$ssh_user@$server_ip" << 'ENDSSH'
+    if [ -n "$SSH_PASSWORD" ]; then
+        sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" << 'ENDSSH'
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
@@ -104,6 +109,33 @@ fi
 
 echo "SUCCESS: Dependencies installed successfully"
 ENDSSH
+    else
+        ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" << 'ENDSSH'
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+# Update package list
+apt-get update -qq
+
+# Install Docker and dependencies
+apt-get install -y docker.io docker-compose git ca-certificates curl > /dev/null 2>&1
+
+# Start and enable Docker
+systemctl enable docker > /dev/null 2>&1
+systemctl start docker > /dev/null 2>&1
+
+# Wait for Docker to be ready
+sleep 3
+
+# Verify Docker installation
+if ! docker --version > /dev/null 2>&1; then
+    echo "ERROR: Docker installation failed"
+    exit 1
+fi
+
+echo "SUCCESS: Dependencies installed successfully"
+ENDSSH
+    fi
 
     if [ $? -ne 0 ]; then
         error_exit "Failed to install dependencies on remote server"
@@ -119,7 +151,8 @@ setup_repository() {
     
     info "Setting up repository on remote server..."
     
-    $SSH_CMD "$ssh_user@$server_ip" << 'ENDSSH'
+    if [ -n "$SSH_PASSWORD" ]; then
+        sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" << 'ENDSSH'
 set -e
 
 APP_DIR="/root/bitcoin-miner"
@@ -138,6 +171,27 @@ mkdir -p logs
 
 echo "SUCCESS: Repository setup completed"
 ENDSSH
+    else
+        ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" << 'ENDSSH'
+set -e
+
+APP_DIR="/root/bitcoin-miner"
+mkdir -p "$APP_DIR"
+cd "$APP_DIR"
+
+# Clone or update repository
+if [ -d ".git" ]; then
+    git pull origin main > /dev/null 2>&1 || git pull > /dev/null 2>&1
+else
+    git clone https://github.com/therealaleph/rust-btc-solominer.git . > /dev/null 2>&1
+fi
+
+# Create logs directory
+mkdir -p logs
+
+echo "SUCCESS: Repository setup completed"
+ENDSSH
+    fi
 
     if [ $? -ne 0 ]; then
         error_exit "Failed to setup repository on remote server"
@@ -156,7 +210,8 @@ create_docker_compose() {
     
     info "Creating docker-compose.yml configuration..."
     
-    $SSH_CMD "$ssh_user@$server_ip" bash << ENDSSH
+    if [ -n "$SSH_PASSWORD" ]; then
+        sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" bash << ENDSSH
 set -e
 
 cat > /root/bitcoin-miner/docker-compose.yml << EOF
@@ -186,6 +241,38 @@ EOF
 
 echo "SUCCESS: Configuration file created"
 ENDSSH
+    else
+        ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" bash << ENDSSH
+set -e
+
+cat > /root/bitcoin-miner/docker-compose.yml << EOF
+services:
+  bitcoin-miner:
+    build: .
+    container_name: bitcoin-solo-miner
+    restart: always
+    environment:
+      - BTC_ADDRESS=$btc_address
+      - QUIET_MODE=0
+      - TELEGRAM_BOT_TOKEN=$tg_token
+      - TELEGRAM_USER_ID=$tg_user_id
+      - RUST_LOG=info
+      - DOCKER_CONTAINER=1
+    volumes:
+      - ./logs:/app/logs
+    stdin_open: false
+    tty: false
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "bitcoin-miner"
+EOF
+
+echo "SUCCESS: Configuration file created"
+ENDSSH
+    fi
 
     if [ $? -ne 0 ]; then
         error_exit "Failed to create configuration file"
@@ -201,7 +288,8 @@ deploy_container() {
     
     info "Building and starting Docker container (this may take several minutes)..."
     
-    $SSH_CMD "$ssh_user@$server_ip" << 'ENDSSH'
+    if [ -n "$SSH_PASSWORD" ]; then
+        sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" << 'ENDSSH'
 set -e
 
 cd /root/bitcoin-miner
@@ -224,6 +312,31 @@ fi
 
 echo "SUCCESS: Container deployed and running"
 ENDSSH
+    else
+        ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" << 'ENDSSH'
+set -e
+
+cd /root/bitcoin-miner
+
+# Stop existing container if running
+docker-compose down 2>/dev/null || true
+
+# Build and start container
+docker-compose up --build -d
+
+# Wait a moment for container to start
+sleep 5
+
+# Check if container is running
+if ! docker-compose ps | grep -q "Up"; then
+    echo "ERROR: Container failed to start"
+    docker-compose logs
+    exit 1
+fi
+
+echo "SUCCESS: Container deployed and running"
+ENDSSH
+    fi
 
     if [ $? -ne 0 ]; then
         error_exit "Failed to deploy container. Check logs on server for details."
@@ -241,11 +354,19 @@ show_status() {
     
     echo ""
     echo "=== Container Status ==="
-    $SSH_CMD "$ssh_user@$server_ip" "cd /root/bitcoin-miner && docker-compose ps" 2>/dev/null || true
+    if [ -n "$SSH_PASSWORD" ]; then
+        sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" "cd /root/bitcoin-miner && docker-compose ps" 2>/dev/null || true
+    else
+        ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" "cd /root/bitcoin-miner && docker-compose ps" 2>/dev/null || true
+    fi
     
     echo ""
     echo "=== Recent Logs (last 20 lines) ==="
-    $SSH_CMD "$ssh_user@$server_ip" "cd /root/bitcoin-miner && docker-compose logs --tail=20" 2>/dev/null || true
+    if [ -n "$SSH_PASSWORD" ]; then
+        sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" "cd /root/bitcoin-miner && docker-compose logs --tail=20" 2>/dev/null || true
+    else
+        ssh -o StrictHostKeyChecking=no "$ssh_user@$server_ip" "cd /root/bitcoin-miner && docker-compose logs --tail=20" 2>/dev/null || true
+    fi
 }
 
 # Input validation
