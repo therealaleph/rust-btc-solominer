@@ -134,32 +134,42 @@ Run the miner and answer prompts for:
 
 ## Quick Start - One-Liner Deployment
 
-### Remote Server Deployment
-
-Deploy to a remote server (Ubuntu/Debian) with automatic setup:
+Deploy the Bitcoin solo miner with a single command. The script will prompt you to choose between local or remote deployment:
 
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/therealaleph/rust-btc-solominer/main/deploy.sh)
 ```
 
-This will:
+### Remote Server Deployment
+
+When you select "remote" deployment (default), the script will:
 - Prompt for server connection details (IP, SSH username, authentication method)
+- Test SSH connection before proceeding
 - Prompt for Bitcoin address and optional Telegram credentials
 - Automatically install Docker and dependencies on the remote server
-- Deploy and start the miner container
+- Clone the repository and deploy the miner container
 - Display status and logs
+
+**Requirements for remote deployment:**
+- Ubuntu/Debian-based server
+- SSH access (key-based or password authentication)
+- Root or sudo privileges
 
 ### Local Deployment
 
-Deploy locally on your machine (requires Docker installed):
+When you select "local" deployment, the script will:
+- Check for Docker and Docker Compose installation
+- Prompt for Bitcoin address and optional Telegram credentials
+- Build and start the miner container locally
+- Display status and logs
 
-```bash
-bash <(curl -sSL https://raw.githubusercontent.com/therealaleph/rust-btc-solominer/main/deploy.sh)
-```
+**Requirements for local deployment:**
+- Docker and Docker Compose installed
+- Sufficient disk space for the Docker image (~1GB)
 
-When prompted, select "local" deployment type.
+### Manual Deployment
 
-Or clone and deploy manually:
+Alternatively, clone the repository and run the deployment script manually:
 
 ```bash
 git clone https://github.com/therealaleph/rust-btc-solominer.git
