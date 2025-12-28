@@ -45,102 +45,15 @@ This Rust implementation of a Bitcoin solo miner prioritizes raw performance whi
 - Block discovery logging to file for persistence
 - Non-interactive mode support for Docker/CI environments
 
-## Prerequisites
-
-- Rust 1.70+ installed
-- OpenSSL development libraries
-- Internet connection for pool connectivity
-- Docker and Docker Compose (optional, for containerized deployment)
-
-## Installation
-
-### Standard Installation
-
-1. **Install Rust** (if not already installed):
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source ~/.cargo/env
-   ```
-
-2. **Install OpenSSL dependencies**:
-   ```bash
-   # Fedora/RHEL
-   sudo dnf install openssl-devel pkg-config
-   
-   # Ubuntu/Debian
-   sudo apt-get install libssl-dev pkg-config
-   
-   # macOS
-   brew install openssl pkg-config
-   ```
-
-3. **Build the miner**:
-   ```bash
-   cargo build --release
-   ```
-
-### Docker Installation
-
-1. **Set environment variables**:
-   ```bash
-   export BTC_ADDRESS=your_bitcoin_address
-   export TELEGRAM_BOT_TOKEN=your_bot_token  # Optional
-   export TELEGRAM_USER_ID=your_user_id      # Optional
-   ```
-
-2. **Build and start**:
-   ```bash
-   docker-compose up --build -d
-   ```
-
-3. **View logs**:
-   ```bash
-   docker-compose logs -f
-   ```
-
-## Configuration
-
-### Option 1: Configuration File
-
-Create a `config.ini` file in the same directory:
-
-```ini
-[miner]
-wallet_address = your_bitcoin_address_here
-quiet_mode = 0
-
-[telegram]
-bot_token = your_bot_token_here
-user_id = your_user_id_here
-```
-
-### Option 2: Environment Variables
-
-Environment variables take precedence over config file:
-
-```bash
-export BTC_ADDRESS=your_bitcoin_address
-export QUIET_MODE=0
-export TELEGRAM_BOT_TOKEN=your_bot_token
-export TELEGRAM_USER_ID=your_user_id
-export RUST_LOG=info
-```
-
-### Option 3: Interactive Setup
-
-Run the miner and answer prompts for:
-- Bitcoin wallet address
-- Quiet mode preference
-
 ## Quick Start - One-Liner Deployment
 
-Deploy the Bitcoin solo miner with a single command. The script will prompt you to choose between local or remote deployment:
+**Deploy the Bitcoin solo miner with a single command. The script will prompt you to choose between local or remote deployment:**
 
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/therealaleph/rust-btc-solominer/main/deploy.sh)
 ```
 
-### Remote Server Deployment
+**Remote Server Deployment:**
 
 When you select "remote" deployment (default), the script will:
 - Prompt for server connection details (IP, SSH username, authentication method)
@@ -155,7 +68,7 @@ When you select "remote" deployment (default), the script will:
 - SSH access (key-based or password authentication)
 - Root or sudo privileges
 
-### Local Deployment
+**Local Deployment:**
 
 When you select "local" deployment, the script will:
 - Check for Docker and Docker Compose installation
@@ -167,7 +80,7 @@ When you select "local" deployment, the script will:
 - Docker and Docker Compose installed
 - Sufficient disk space for the Docker image (~1GB)
 
-### Manual Deployment
+**Manual Deployment:**
 
 Alternatively, clone the repository and run the deployment script manually:
 
