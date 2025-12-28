@@ -452,14 +452,33 @@ deploy_local() {
             error_exit "Failed to clone repository. Please check your internet connection and Git installation."
         fi
         
+        # Verify the repository was cloned correctly
+        if [ ! -f "$deploy_dir/Dockerfile" ] || [ ! -f "$deploy_dir/Cargo.toml" ] || [ ! -f "$deploy_dir/src/main.rs" ]; then
+            rm -rf "$temp_dir"
+            error_exit "Repository clone incomplete. Required files are missing."
+        fi
+        
         success "Repository cloned successfully"
         echo ""
         echo "Repository cloned to: $deploy_dir"
         echo "You can delete this directory after deployment if desired."
         echo ""
         
-        # Change to repository directory
+        # Change to repository directory and verify
         cd "$deploy_dir" || error_exit "Failed to change to repository directory"
+        if [ "$(pwd)" != "$deploy_dir" ]; then
+            error_exit "Failed to change to repository directory. Current directory: $(pwd), Expected: $deploy_dir"
+        fi
+        
+        # Verify we're in the right place
+        if [ ! -f "Dockerfile" ]; then
+            error_exit "Dockerfile not found in repository directory. Current directory: $(pwd)"
+        fi
+    fi
+    
+    # Final verification that we're in the repository
+    if [ ! -f "Dockerfile" ] || [ ! -f "Cargo.toml" ]; then
+        error_exit "Repository files not found. Current directory: $(pwd)"
     fi
     
     # Get user credentials
