@@ -270,13 +270,6 @@ create_docker_compose() {
     success "Configuration file created"
 }
 
-    if [ $? -ne 0 ]; then
-        error_exit "Failed to create configuration file"
-    fi
-    
-    success "Configuration file created"
-}
-
 # Build and start Docker container
 deploy_container() {
     local server_ip=$1
