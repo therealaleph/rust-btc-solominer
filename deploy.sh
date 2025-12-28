@@ -428,6 +428,33 @@ deploy_local() {
         error_exit "Docker Compose is not installed. Please install Docker Compose first."
     fi
     
+    # Setup repository - check if we're in the repository directory
+    local repo_dir=""
+    if [ -f "Dockerfile" ] && [ -f "Cargo.toml" ] && [ -f "src/main.rs" ]; then
+        repo_dir="."
+        info "Using existing repository in current directory"
+    else
+        # Clone repository to a temporary directory
+        info "Repository not found in current directory. Cloning repository..."
+        
+        local temp_dir=$(mktemp -d)
+        repo_dir="$temp_dir/rust-btc-solominer"
+        
+        if ! git clone https://github.com/therealaleph/rust-btc-solominer.git "$repo_dir" 2>/dev/null; then
+            rm -rf "$temp_dir"
+            error_exit "Failed to clone repository. Please check your internet connection."
+        fi
+        
+        success "Repository cloned successfully"
+        echo ""
+        echo "Repository cloned to: $repo_dir"
+        echo "You can delete this directory after deployment if desired."
+        echo ""
+    fi
+    
+    # Change to repository directory
+    cd "$repo_dir" || error_exit "Failed to change to repository directory"
+    
     # Get user credentials
     echo "Enter your configuration details:"
     
@@ -528,9 +555,13 @@ deploy_local() {
     echo ""
     echo "Your Bitcoin solo miner is now running locally"
     echo ""
-    echo "To view logs: $DOCKER_COMPOSE_CMD logs -f"
-    echo "To stop miner: $DOCKER_COMPOSE_CMD down"
-    echo "To restart: $DOCKER_COMPOSE_CMD restart"
+    if [ "$repo_dir" != "." ]; then
+        echo "Repository location: $repo_dir"
+        echo ""
+    fi
+    echo "To view logs: cd $repo_dir && $DOCKER_COMPOSE_CMD logs -f"
+    echo "To stop miner: cd $repo_dir && $DOCKER_COMPOSE_CMD down"
+    echo "To restart: cd $repo_dir && $DOCKER_COMPOSE_CMD restart"
     echo ""
 }
 
