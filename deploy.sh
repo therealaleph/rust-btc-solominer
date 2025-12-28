@@ -430,32 +430,37 @@ deploy_local() {
     
     # Setup repository - check if we're in the repository directory
     local original_dir=$(pwd)
+    local deploy_dir=""
+    
     if [ -f "Dockerfile" ] && [ -f "Cargo.toml" ] && [ -f "src/main.rs" ]; then
         info "Using existing repository in current directory"
+        deploy_dir=$(pwd)
     else
+        # Check if git is available
+        if ! command -v git &> /dev/null; then
+            error_exit "Git is not installed. Please install Git first to clone the repository."
+        fi
+        
         # Clone repository to a temporary directory
         info "Repository not found in current directory. Cloning repository..."
         
         local temp_dir=$(mktemp -d)
-        local repo_dir="$temp_dir/rust-btc-solominer"
+        deploy_dir="$temp_dir/rust-btc-solominer"
         
-        if ! git clone https://github.com/therealaleph/rust-btc-solominer.git "$repo_dir" 2>/dev/null; then
+        if ! git clone https://github.com/therealaleph/rust-btc-solominer.git "$deploy_dir" 2>&1; then
             rm -rf "$temp_dir"
-            error_exit "Failed to clone repository. Please check your internet connection."
+            error_exit "Failed to clone repository. Please check your internet connection and Git installation."
         fi
         
         success "Repository cloned successfully"
         echo ""
-        echo "Repository cloned to: $repo_dir"
+        echo "Repository cloned to: $deploy_dir"
         echo "You can delete this directory after deployment if desired."
         echo ""
         
         # Change to repository directory
-        cd "$repo_dir" || error_exit "Failed to change to repository directory"
+        cd "$deploy_dir" || error_exit "Failed to change to repository directory"
     fi
-    
-    # Store current directory for later use
-    local deploy_dir=$(pwd)
     
     # Get user credentials
     echo "Enter your configuration details:"
@@ -559,6 +564,9 @@ deploy_local() {
     echo ""
     if [ "$deploy_dir" != "$original_dir" ]; then
         echo "Repository location: $deploy_dir"
+        echo ""
+        echo "Note: The repository was cloned to a temporary directory."
+        echo "You can delete it after stopping the container if desired."
         echo ""
     fi
     echo "To view logs: cd $deploy_dir && $DOCKER_COMPOSE_CMD logs -f"
