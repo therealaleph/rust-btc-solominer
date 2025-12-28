@@ -38,6 +38,7 @@ Thumbs.db
 
 # Deployment scripts (may contain sensitive data)
 *deploy*.sh
+!deploy.sh
 *create*.sh
 *server*.sh
 *hetzner*.sh

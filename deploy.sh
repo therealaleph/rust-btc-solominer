@@ -1,0 +1,354 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Error handling
+error_exit() {
+    echo -e "${RED}Error: $1${NC}" >&2
+    exit 1
+}
+
+info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+# Check dependencies
+check_dependencies() {
+    local missing_deps=()
+    
+    for cmd in ssh scp; do
+        if ! command -v "$cmd" &> /dev/null; then
+            missing_deps+=("$cmd")
+        fi
+    done
+    
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        error_exit "Missing required commands: ${missing_deps[*]}. Please install OpenSSH client."
+    fi
+}
+
+# Test SSH connection
+test_connection() {
+    local server_ip=$1
+    local ssh_user=$2
+    local use_password=$3
+    local ssh_password=$4
+    
+    info "Testing SSH connection to $ssh_user@$server_ip..."
+    
+    if [ "$use_password" = "yes" ]; then
+        if ! command -v sshpass &> /dev/null; then
+            error_exit "sshpass is required for password authentication. Install it with: apt-get install sshpass (Ubuntu/Debian) or brew install hudochenkov/sshpass/sshpass (macOS)"
+        fi
+        
+        if ! sshpass -p "$ssh_password" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$ssh_user@$server_ip" "echo 'Connection successful'" 2>/dev/null; then
+            error_exit "Failed to connect to server. Please check credentials and network connectivity."
+        fi
+        SSH_CMD="sshpass -p '$ssh_password' ssh -o StrictHostKeyChecking=no"
+        SCP_CMD="sshpass -p '$ssh_password' scp -o StrictHostKeyChecking=no"
+    else
+        if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes "$ssh_user@$server_ip" "echo 'Connection successful'" 2>/dev/null; then
+            error_exit "Failed to connect to server. Please check SSH key configuration."
+        fi
+        SSH_CMD="ssh -o StrictHostKeyChecking=no"
+        SCP_CMD="scp -o StrictHostKeyChecking=no"
+    fi
+    
+    success "SSH connection successful"
+}
+
+# Install dependencies on remote server
+install_dependencies() {
+    local server_ip=$1
+    local ssh_user=$2
+    
+    info "Installing dependencies on remote server (this may take a few minutes)..."
+    
+    $SSH_CMD "$ssh_user@$server_ip" << 'ENDSSH'
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+# Update package list
+apt-get update -qq
+
+# Install Docker and dependencies
+apt-get install -y docker.io docker-compose git ca-certificates curl > /dev/null 2>&1
+
+# Start and enable Docker
+systemctl enable docker > /dev/null 2>&1
+systemctl start docker > /dev/null 2>&1
+
+# Wait for Docker to be ready
+sleep 3
+
+# Verify Docker installation
+if ! docker --version > /dev/null 2>&1; then
+    echo "ERROR: Docker installation failed"
+    exit 1
+fi
+
+echo "SUCCESS: Dependencies installed successfully"
+ENDSSH
+
+    if [ $? -ne 0 ]; then
+        error_exit "Failed to install dependencies on remote server"
+    fi
+    
+    success "Dependencies installed successfully"
+}
+
+# Clone repository on remote server
+setup_repository() {
+    local server_ip=$1
+    local ssh_user=$2
+    
+    info "Setting up repository on remote server..."
+    
+    $SSH_CMD "$ssh_user@$server_ip" << 'ENDSSH'
+set -e
+
+APP_DIR="/root/bitcoin-miner"
+mkdir -p "$APP_DIR"
+cd "$APP_DIR"
+
+# Clone or update repository
+if [ -d ".git" ]; then
+    git pull origin main > /dev/null 2>&1 || git pull > /dev/null 2>&1
+else
+    git clone https://github.com/therealaleph/rust-btc-solominer.git . > /dev/null 2>&1
+fi
+
+# Create logs directory
+mkdir -p logs
+
+echo "SUCCESS: Repository setup completed"
+ENDSSH
+
+    if [ $? -ne 0 ]; then
+        error_exit "Failed to setup repository on remote server"
+    fi
+    
+    success "Repository setup completed"
+}
+
+# Create docker-compose.yml with user credentials
+create_docker_compose() {
+    local server_ip=$1
+    local ssh_user=$2
+    local btc_address=$3
+    local tg_token=$4
+    local tg_user_id=$5
+    
+    info "Creating docker-compose.yml configuration..."
+    
+    $SSH_CMD "$ssh_user@$server_ip" bash << ENDSSH
+set -e
+
+cat > /root/bitcoin-miner/docker-compose.yml << EOF
+services:
+  bitcoin-miner:
+    build: .
+    container_name: bitcoin-solo-miner
+    restart: always
+    environment:
+      - BTC_ADDRESS=$btc_address
+      - QUIET_MODE=0
+      - TELEGRAM_BOT_TOKEN=$tg_token
+      - TELEGRAM_USER_ID=$tg_user_id
+      - RUST_LOG=info
+      - DOCKER_CONTAINER=1
+    volumes:
+      - ./logs:/app/logs
+    stdin_open: false
+    tty: false
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "bitcoin-miner"
+EOF
+
+echo "SUCCESS: Configuration file created"
+ENDSSH
+
+    if [ $? -ne 0 ]; then
+        error_exit "Failed to create configuration file"
+    fi
+    
+    success "Configuration file created"
+}
+
+# Build and start Docker container
+deploy_container() {
+    local server_ip=$1
+    local ssh_user=$2
+    
+    info "Building and starting Docker container (this may take several minutes)..."
+    
+    $SSH_CMD "$ssh_user@$server_ip" << 'ENDSSH'
+set -e
+
+cd /root/bitcoin-miner
+
+# Stop existing container if running
+docker-compose down 2>/dev/null || true
+
+# Build and start container
+docker-compose up --build -d
+
+# Wait a moment for container to start
+sleep 5
+
+# Check if container is running
+if ! docker-compose ps | grep -q "Up"; then
+    echo "ERROR: Container failed to start"
+    docker-compose logs
+    exit 1
+fi
+
+echo "SUCCESS: Container deployed and running"
+ENDSSH
+
+    if [ $? -ne 0 ]; then
+        error_exit "Failed to deploy container. Check logs on server for details."
+    fi
+    
+    success "Container deployed and running"
+}
+
+# Display status and logs
+show_status() {
+    local server_ip=$1
+    local ssh_user=$2
+    
+    info "Fetching container status..."
+    
+    echo ""
+    echo "=== Container Status ==="
+    $SSH_CMD "$ssh_user@$server_ip" "cd /root/bitcoin-miner && docker-compose ps" 2>/dev/null || true
+    
+    echo ""
+    echo "=== Recent Logs (last 20 lines) ==="
+    $SSH_CMD "$ssh_user@$server_ip" "cd /root/bitcoin-miner && docker-compose logs --tail=20" 2>/dev/null || true
+}
+
+# Input validation
+validate_input() {
+    local value=$1
+    local name=$2
+    
+    if [ -z "$value" ]; then
+        error_exit "$name cannot be empty"
+    fi
+}
+
+validate_btc_address() {
+    local address=$1
+    
+    if [ ${#address} -lt 26 ] || [ ${#address} -gt 35 ]; then
+        warning "Bitcoin address length is unusual (${#address} characters). Continuing anyway..."
+    fi
+}
+
+# Main deployment function
+main() {
+    echo "=========================================="
+    echo "Bitcoin Solo Miner - Deployment Script"
+    echo "=========================================="
+    echo ""
+    
+    # Check dependencies
+    check_dependencies
+    
+    # Get server connection details
+    read -p "Enter server IP address: " SERVER_IP
+    validate_input "$SERVER_IP" "Server IP address"
+    
+    read -p "Enter SSH username [default: root]: " SSH_USER
+    SSH_USER=${SSH_USER:-root}
+    validate_input "$SSH_USER" "SSH username"
+    
+    read -p "Do you want to use SSH key authentication? (yes/no) [default: yes]: " USE_SSH_KEY
+    USE_SSH_KEY=${USE_SSH_KEY:-yes}
+    
+    SSH_PASSWORD=""
+    if [ "$USE_SSH_KEY" != "yes" ]; then
+        read -sp "Enter SSH password: " SSH_PASSWORD
+        echo ""
+        validate_input "$SSH_PASSWORD" "SSH password"
+    fi
+    
+    # Test connection
+    test_connection "$SERVER_IP" "$SSH_USER" "$USE_SSH_KEY" "$SSH_PASSWORD"
+    
+    # Get user credentials
+    echo ""
+    echo "Enter your configuration details:"
+    
+    read -p "Bitcoin address (required): " BTC_ADDRESS
+    validate_input "$BTC_ADDRESS" "Bitcoin address"
+    validate_btc_address "$BTC_ADDRESS"
+    
+    read -p "Telegram bot token (required): " TG_TOKEN
+    validate_input "$TG_TOKEN" "Telegram bot token"
+    
+    read -p "Telegram user ID (required): " TG_USER_ID
+    validate_input "$TG_USER_ID" "Telegram user ID"
+    
+    # Validate Telegram user ID is numeric
+    if ! [[ "$TG_USER_ID" =~ ^[0-9]+$ ]]; then
+        error_exit "Telegram user ID must be numeric"
+    fi
+    
+    echo ""
+    info "Starting deployment process..."
+    echo ""
+    
+    # Install dependencies
+    install_dependencies "$SERVER_IP" "$SSH_USER"
+    
+    # Setup repository
+    setup_repository "$SERVER_IP" "$SSH_USER"
+    
+    # Create docker-compose.yml
+    create_docker_compose "$SERVER_IP" "$SSH_USER" "$BTC_ADDRESS" "$TG_TOKEN" "$TG_USER_ID"
+    
+    # Deploy container
+    deploy_container "$SERVER_IP" "$SSH_USER"
+    
+    # Show status
+    echo ""
+    show_status "$SERVER_IP" "$SSH_USER"
+    
+    echo ""
+    echo "=========================================="
+    success "Deployment completed successfully!"
+    echo "=========================================="
+    echo ""
+    echo "Your Bitcoin solo miner is now running on: $SERVER_IP"
+    echo ""
+    echo "To view logs: ssh $SSH_USER@$SERVER_IP 'cd /root/bitcoin-miner && docker-compose logs -f'"
+    echo "To stop miner: ssh $SSH_USER@$SERVER_IP 'cd /root/bitcoin-miner && docker-compose down'"
+    echo "To restart: ssh $SSH_USER@$SERVER_IP 'cd /root/bitcoin-miner && docker-compose restart'"
+    echo ""
+}
+
+# Run main function
+main "$@"
+
