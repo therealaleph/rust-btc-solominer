@@ -428,21 +428,22 @@ deploy_local() {
         error_exit "Docker Compose is not installed. Please install Docker Compose first."
     fi
     
-    # Setup repository - check if we're in the repository directory
+    # Setup repository - ALWAYS clone to ensure we have all files
     local original_dir=$(pwd)
     local deploy_dir=""
     
-    if [ -f "Dockerfile" ] && [ -f "Cargo.toml" ] && [ -f "src/main.rs" ]; then
-        info "Using existing repository in current directory"
+    # Check if git is available
+    if ! command -v git &> /dev/null; then
+        error_exit "Git is not installed. Please install Git first to clone the repository."
+    fi
+    
+    # Check if we're already in a valid repository directory
+    if [ -f "Dockerfile" ] && [ -f "Cargo.toml" ] && [ -f "src/main.rs" ] && [ -d ".git" ]; then
+        info "Valid repository found in current directory. Using it."
         deploy_dir=$(pwd)
     else
-        # Check if git is available
-        if ! command -v git &> /dev/null; then
-            error_exit "Git is not installed. Please install Git first to clone the repository."
-        fi
-        
         # Clone repository to a temporary directory
-        info "Repository not found in current directory. Cloning repository..."
+        info "Cloning repository..."
         
         local temp_dir=$(mktemp -d)
         deploy_dir="$temp_dir/rust-btc-solominer"
@@ -458,27 +459,17 @@ deploy_local() {
             error_exit "Repository clone incomplete. Required files are missing."
         fi
         
-        success "Repository cloned successfully"
-        echo ""
-        echo "Repository cloned to: $deploy_dir"
-        echo "You can delete this directory after deployment if desired."
-        echo ""
+        success "Repository cloned successfully to: $deploy_dir"
         
-        # Change to repository directory and verify
-        cd "$deploy_dir" || error_exit "Failed to change to repository directory"
-        if [ "$(pwd)" != "$deploy_dir" ]; then
-            error_exit "Failed to change to repository directory. Current directory: $(pwd), Expected: $deploy_dir"
-        fi
+        # Change to repository directory
+        cd "$deploy_dir" || error_exit "Failed to change to repository directory: $deploy_dir"
         
         # Verify we're in the right place
-        if [ ! -f "Dockerfile" ]; then
-            error_exit "Dockerfile not found in repository directory. Current directory: $(pwd)"
+        if [ ! -f "Dockerfile" ] || [ ! -f "Cargo.toml" ]; then
+            error_exit "Repository files not found after directory change. Current directory: $(pwd)"
         fi
-    fi
-    
-    # Final verification that we're in the repository
-    if [ ! -f "Dockerfile" ] || [ ! -f "Cargo.toml" ]; then
-        error_exit "Repository files not found. Current directory: $(pwd)"
+        
+        info "Changed to repository directory: $(pwd)"
     fi
     
     # Get user credentials
