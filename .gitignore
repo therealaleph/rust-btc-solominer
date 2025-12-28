@@ -35,3 +35,15 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+
+# Deployment scripts (may contain sensitive data)
+*deploy*.sh
+*create*.sh
+*server*.sh
+*hetzner*.sh
+
+# API keys and tokens
+*.key
+*.token
+*secret*
+*private*
