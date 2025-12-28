@@ -472,6 +472,14 @@ deploy_local() {
         info "Changed to repository directory: $(pwd)"
     fi
     
+    # CRITICAL: Verify we're in the repository directory before proceeding
+    if [ ! -f "Dockerfile" ] || [ ! -f "Cargo.toml" ] || [ ! -f "src/main.rs" ]; then
+        error_exit "Not in repository directory! Current directory: $(pwd). Expected files not found."
+    fi
+    
+    info "Working in repository directory: $(pwd)"
+    echo ""
+    
     # Get user credentials
     echo "Enter your configuration details:"
     
@@ -498,7 +506,7 @@ deploy_local() {
     fi
     
     # Create docker-compose.yml
-    info "Creating docker-compose.yml configuration..."
+    info "Creating docker-compose.yml configuration in: $(pwd)"
     
     local compose_content
     compose_content="services:
